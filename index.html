@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Static Audio Mixer</title>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-xl">
+    <h1 class="text-2xl font-bold mb-4 text-center">Audio Mixer</h1>
+    <p class="text-sm text-gray-600 text-center mb-6">Upload multiple audio files (vocals + instrumentals) to mix them together</p>
+
+    <input type="file" id="file-input" multiple accept="audio/*" class="block w-full mb-4" />
+
+    <button id="mix-button" class="bg-blue-500 text-white px-4 py-2 rounded-xl w-full">Mix Audio</button>
+
+    <div id="status" class="mt-4 text-center text-gray-700"></div>
+    <audio id="audio-output" class="mt-4 w-full" controls></audio>
+    <button id="download-button" class="hidden mt-4 bg-green-500 text-white px-4 py-2 rounded-xl w-full">Download Mixed Audio</button>
+  </div>
+
+  <script>
+    async function readAudioFile(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          audioCtx.decodeAudioData(e.target.result, (buffer) => {
+            resolve({ buffer, context: audioCtx });
+          });
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    async function mixAudio(files) {
+      const audioData = await Promise.all([...files].map(readAudioFile));
+
+      const maxDuration = Math.max(...audioData.map(({ buffer }) => buffer.duration));
+      const sampleRate = audioData[0].buffer.sampleRate;
+      const numChannels = audioData[0].buffer.numberOfChannels;
+
+      const offlineCtx = new OfflineAudioContext(numChannels, sampleRate * maxDuration, sampleRate);
+
+      audioData.forEach(({ buffer }) => {
+        const source = offlineCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(offlineCtx.destination);
+        source.start();
+      });
+
+      const mixedBuffer = await offlineCtx.startRendering();
+      const audioBlob = bufferToWaveBlob(mixedBuffer);
+      const url = URL.createObjectURL(audioBlob);
+      document.getElementById("audio-output").src = url;
+      document.getElementById("download-button").onclick = () => saveAs(audioBlob, "mixed_audio.wav");
+      document.getElementById("download-button").classList.remove("hidden");
+      document.getElementById("status").innerText = "Audio files mixed successfully!";
+    }
+
+    function bufferToWaveBlob(buffer) {
+      const numChannels = buffer.numberOfChannels;
+      const length = buffer.length * numChannels * 2;
+      const bufferArray = new ArrayBuffer(44 + length);
+      const view = new DataView(bufferArray);
+
+      // RIFF chunk descriptor
+      writeUTFBytes(view, 0, 'RIFF');
+      view.setUint32(4, 36 + length, true);
+      writeUTFBytes(view, 8, 'WAVE');
+
+      // FMT sub-chunk
+      writeUTFBytes(view, 12, 'fmt ');
+      view.setUint32(16, 16, true); // SubChunk1Size
+      view.setUint16(20, 1, true);  // AudioFormat (1 = PCM)
+      view.setUint16(22, numChannels, true);
+      view.setUint32(24, buffer.sampleRate, true);
+      view.setUint32(28, buffer.sampleRate * numChannels * 2, true);
+      view.setUint16(32, numChannels * 2, true);
+      view.setUint16(34, 16, true); // Bits per sample
+
+      // data sub-chunk
+      writeUTFBytes(view, 36, 'data');
+      view.setUint32(40, length, true);
+
+      // Write PCM samples
+      let offset = 44;
+      for (let i = 0; i < buffer.length; i++) {
+        for (let channel = 0; channel < numChannels; channel++) {
+          const sample = buffer.getChannelData(channel)[i];
+          const s = Math.max(-1, Math.min(1, sample));
+          view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+          offset += 2;
+        }
+      }
+
+      return new Blob([view], { type: 'audio/wav' });
+    }
+
+    function writeUTFBytes(view, offset, string) {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    }
+
+    document.getElementById("mix-button").addEventListener("click", async () => {
+      const files = document.getElementById("file-input").files;
+      if (files.length < 2) {
+        document.getElementById("status").innerText = "Please upload at least two audio files.";
+        return;
+      }
+
+      // Unlock audio context on first click (browser requirement)
+      const unlockCtx = new AudioContext();
+      await unlockCtx.resume();
+
+      document.getElementById("status").innerText = "Mixing... Please wait.";
+      mixAudio(files);
+    });
+  </script>
+</body>
+</html>
