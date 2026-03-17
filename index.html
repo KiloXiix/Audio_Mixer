@@ -3,122 +3,506 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Static Audio Mixer</title>
+  <title>Audio Mixer</title>
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0c0c0e;
+      --surface: #141418;
+      --track-bg: #1b1b22;
+      --border: #2a2a35;
+      --accent: #e8ff47;
+      --accent-dim: #b8cc30;
+      --text: #f0f0f0;
+      --muted: #6b6b80;
+      --danger: #ff5252;
+      --radius: 10px;
+    }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 40px 16px 60px;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 560px;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+    .header h1 {
+      font-family: 'Space Mono', monospace;
+      font-size: 1.75rem;
+      letter-spacing: -0.5px;
+      color: var(--text);
+    }
+    .header h1 span { color: var(--accent); }
+    .header p {
+      margin-top: 6px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      font-weight: 300;
+    }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 1.5px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 28px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 20px;
+      background: var(--surface);
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: #1a1a20;
+    }
+    .drop-zone input { display: none; }
+    .drop-icon {
+      font-size: 1.8rem;
+      margin-bottom: 8px;
+    }
+    .drop-zone p {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .drop-zone strong { color: var(--accent); font-weight: 500; }
+
+    /* Track list */
+    #track-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+
+    .track-card {
+      background: var(--track-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      grid-template-rows: auto auto;
+      gap: 10px 16px;
+      align-items: center;
+      animation: slide-in 0.2s ease;
+    }
+    @keyframes slide-in {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .track-name {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.78rem;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 340px;
+    }
+
+    .remove-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      padding: 2px 4px;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .remove-btn:hover { color: var(--danger); background: rgba(255,82,82,0.08); }
+
+    /* Volume slider row */
+    .vol-row {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .vol-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .vol-label span {
+      color: var(--accent);
+      min-width: 32px;
+      display: inline-block;
+      text-align: right;
+    }
+
+    input[type=range] {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--border);
+      outline: none;
+      cursor: pointer;
+      position: relative;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+    input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
+    input[type=range]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: none;
+      cursor: pointer;
+    }
+
+    /* Filled track via background-size trick */
+    input[type=range].filled {
+      background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--val), var(--border) var(--val), var(--border) 100%);
+    }
+
+    /* Actions */
+    .actions { display: flex; flex-direction: column; gap: 10px; }
+
+    .btn {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.85rem;
+      letter-spacing: 0.5px;
+      border: none;
+      border-radius: var(--radius);
+      padding: 14px;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      width: 100%;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #0c0c0e;
+      font-weight: 700;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-dim); }
+
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .btn-secondary.hidden { display: none; }
+
+    /* Status */
+    #status {
+      margin-top: 16px;
+      font-size: 0.82rem;
+      color: var(--muted);
+      text-align: center;
+      font-family: 'Space Mono', monospace;
+      min-height: 20px;
+    }
+    #status.ok  { color: var(--accent); }
+    #status.err { color: var(--danger); }
+
+    /* Progress bar */
+    .progress-wrap {
+      margin-top: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      height: 4px;
+      display: none;
+    }
+    .progress-wrap.visible { display: block; }
+    .progress-bar {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    /* Player */
+    audio {
+      margin-top: 16px;
+      width: 100%;
+      filter: invert(1) hue-rotate(180deg);
+      border-radius: 6px;
+    }
+    audio:not([src]) { display: none; }
+
+    /* Empty state */
+    .empty-hint {
+      text-align: center;
+      padding: 16px 0 4px;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    .empty-hint.hidden { display: none; }
+  </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-xl">
-    <h1 class="text-2xl font-bold mb-4 text-center">Audio Mixer</h1>
-    <p class="text-sm text-gray-600 text-center mb-6">Upload multiple audio files (vocals + instrumentals) to mix them together</p>
+<body>
+<div class="app">
 
-    <input type="file" id="file-input" multiple accept="audio/*" class="block w-full mb-4" />
+  <header class="header">
+    <h1>Audio <span>Mixer</span></h1>
+    <p>Upload tracks, adjust volumes, export as WAV</p>
+  </header>
 
-    <button id="mix-button" class="bg-blue-500 text-white px-4 py-2 rounded-xl w-full">Mix Audio</button>
+  <!-- Drop zone -->
+  <label class="drop-zone" id="drop-zone">
+    <input type="file" id="file-input" multiple accept="audio/*" />
+    <div class="drop-icon">🎚</div>
+    <p><strong>Click to add files</strong> or drag &amp; drop</p>
+    <p>MP3 · WAV · OGG · FLAC · M4A</p>
+  </label>
 
-    <div id="status" class="mt-4 text-center text-gray-700"></div>
-    <audio id="audio-output" class="mt-4 w-full" controls></audio>
-    <button id="download-button" class="hidden mt-4 bg-green-500 text-white px-4 py-2 rounded-xl w-full">Download Mixed Audio</button>
+  <!-- Track list -->
+  <div id="track-list"></div>
+  <p class="empty-hint" id="empty-hint">Add at least 2 audio files to mix.</p>
+
+  <!-- Actions -->
+  <div class="actions">
+    <button class="btn btn-primary" id="mix-btn" disabled>MIX TRACKS</button>
+    <button class="btn btn-secondary hidden" id="dl-btn">⬇ DOWNLOAD MIXED WAV</button>
   </div>
 
-  <script>
-    async function readAudioFile(file) {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-          audioCtx.decodeAudioData(e.target.result, (buffer) => {
-            resolve({ buffer, context: audioCtx });
-          });
-        };
-        reader.readAsArrayBuffer(file);
-      });
-    }
+  <div class="progress-wrap" id="progress-wrap">
+    <div class="progress-bar" id="progress-bar"></div>
+  </div>
 
-    async function mixAudio(files) {
-      const audioData = await Promise.all([...files].map(readAudioFile));
+  <div id="status"></div>
+  <audio id="audio-out" controls></audio>
 
-      const maxDuration = Math.max(...audioData.map(({ buffer }) => buffer.duration));
-      const sampleRate = audioData[0].buffer.sampleRate;
-      const numChannels = audioData[0].buffer.numberOfChannels;
+</div>
 
-      const offlineCtx = new OfflineAudioContext(numChannels, sampleRate * maxDuration, sampleRate);
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  const tracks = []; // { file, volume }
 
-      audioData.forEach(({ buffer }) => {
-        const source = offlineCtx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(offlineCtx.destination);
-        source.start();
-      });
+  // ── DOM refs ───────────────────────────────────────────────────────────────
+  const fileInput   = document.getElementById('file-input');
+  const dropZone    = document.getElementById('drop-zone');
+  const trackList   = document.getElementById('track-list');
+  const emptyHint   = document.getElementById('empty-hint');
+  const mixBtn      = document.getElementById('mix-btn');
+  const dlBtn       = document.getElementById('dl-btn');
+  const statusEl    = document.getElementById('status');
+  const audioOut    = document.getElementById('audio-out');
+  const progressWrap= document.getElementById('progress-wrap');
+  const progressBar = document.getElementById('progress-bar');
 
-      const mixedBuffer = await offlineCtx.startRendering();
-      const audioBlob = bufferToWaveBlob(mixedBuffer);
-      const url = URL.createObjectURL(audioBlob);
-      document.getElementById("audio-output").src = url;
-      document.getElementById("download-button").onclick = () => saveAs(audioBlob, "mixed_audio.wav");
-      document.getElementById("download-button").classList.remove("hidden");
-      document.getElementById("status").innerText = "Audio files mixed successfully!";
-    }
+  // ── File input / drag-drop ─────────────────────────────────────────────────
+  fileInput.addEventListener('change', e => addFiles(e.target.files));
 
-    function bufferToWaveBlob(buffer) {
-      const numChannels = buffer.numberOfChannels;
-      const length = buffer.length * numChannels * 2;
-      const bufferArray = new ArrayBuffer(44 + length);
-      const view = new DataView(bufferArray);
+  dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    addFiles(e.dataTransfer.files);
+  });
 
-      // RIFF chunk descriptor
-      writeUTFBytes(view, 0, 'RIFF');
-      view.setUint32(4, 36 + length, true);
-      writeUTFBytes(view, 8, 'WAVE');
-
-      // FMT sub-chunk
-      writeUTFBytes(view, 12, 'fmt ');
-      view.setUint32(16, 16, true); // SubChunk1Size
-      view.setUint16(20, 1, true);  // AudioFormat (1 = PCM)
-      view.setUint16(22, numChannels, true);
-      view.setUint32(24, buffer.sampleRate, true);
-      view.setUint32(28, buffer.sampleRate * numChannels * 2, true);
-      view.setUint16(32, numChannels * 2, true);
-      view.setUint16(34, 16, true); // Bits per sample
-
-      // data sub-chunk
-      writeUTFBytes(view, 36, 'data');
-      view.setUint32(40, length, true);
-
-      // Write PCM samples
-      let offset = 44;
-      for (let i = 0; i < buffer.length; i++) {
-        for (let channel = 0; channel < numChannels; channel++) {
-          const sample = buffer.getChannelData(channel)[i];
-          const s = Math.max(-1, Math.min(1, sample));
-          view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-          offset += 2;
-        }
-      }
-
-      return new Blob([view], { type: 'audio/wav' });
-    }
-
-    function writeUTFBytes(view, offset, string) {
-      for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i));
-      }
-    }
-
-    document.getElementById("mix-button").addEventListener("click", async () => {
-      const files = document.getElementById("file-input").files;
-      if (files.length < 2) {
-        document.getElementById("status").innerText = "Please upload at least two audio files.";
-        return;
-      }
-
-      // Unlock audio context on first click (browser requirement)
-      const unlockCtx = new AudioContext();
-      await unlockCtx.resume();
-
-      document.getElementById("status").innerText = "Mixing... Please wait.";
-      mixAudio(files);
+  function addFiles(fileList) {
+    [...fileList].forEach(f => {
+      if (!f.type.startsWith('audio/')) return;
+      tracks.push({ file: f, volume: 1.0 });
     });
-  </script>
+    renderTracks();
+    fileInput.value = '';
+  }
+
+  // ── Render track cards ─────────────────────────────────────────────────────
+  function renderTracks() {
+    trackList.innerHTML = '';
+
+    tracks.forEach((t, i) => {
+      const pct = (t.volume / 2) * 100; // slider 0–2, display as 0–200%
+
+      const card = document.createElement('div');
+      card.className = 'track-card';
+      card.innerHTML = `
+        <div class="track-name" title="${t.file.name}">${t.file.name}</div>
+        <button class="remove-btn" data-i="${i}" title="Remove">✕</button>
+        <div class="vol-row">
+          <span class="vol-label">VOL <span id="vol-val-${i}">${Math.round(t.volume * 100)}%</span></span>
+          <input
+            type="range" class="filled" id="slider-${i}"
+            min="0" max="2" step="0.01"
+            value="${t.volume}"
+            style="--val: ${pct}%"
+            data-i="${i}"
+          />
+        </div>
+      `;
+      trackList.appendChild(card);
+
+      // Update fill + label live
+      const slider = card.querySelector(`#slider-${i}`);
+      const valLbl = card.querySelector(`#vol-val-${i}`);
+      slider.addEventListener('input', () => {
+        const v = parseFloat(slider.value);
+        tracks[i].volume = v;
+        const p = (v / 2) * 100;
+        slider.style.setProperty('--val', p + '%');
+        valLbl.textContent = Math.round(v * 100) + '%';
+      });
+
+      // Remove button
+      card.querySelector('.remove-btn').addEventListener('click', () => {
+        tracks.splice(i, 1);
+        renderTracks();
+      });
+    });
+
+    emptyHint.classList.toggle('hidden', tracks.length > 0);
+    mixBtn.disabled = tracks.length < 2;
+    setStatus('');
+    dlBtn.classList.add('hidden');
+    audioOut.removeAttribute('src');
+  }
+
+  // ── Mix ────────────────────────────────────────────────────────────────────
+  mixBtn.addEventListener('click', async () => {
+    const unlockCtx = new AudioContext();
+    await unlockCtx.resume();
+    await unlockCtx.close();
+
+    mixBtn.disabled = true;
+    dlBtn.classList.add('hidden');
+    audioOut.removeAttribute('src');
+    setProgress(0);
+    progressWrap.classList.add('visible');
+    setStatus('Decoding audio files…');
+
+    try {
+      // Decode all files
+      const decoded = await Promise.all(tracks.map((t, i) => decodeFile(t.file, i)));
+      setProgress(50);
+      setStatus('Mixing…');
+
+      const sampleRate  = decoded[0].sampleRate;
+      const numChannels = Math.max(...decoded.map(b => b.numberOfChannels));
+      const maxLen      = Math.max(...decoded.map(b => b.length));
+
+      const offCtx = new OfflineAudioContext(numChannels, maxLen, sampleRate);
+
+      decoded.forEach((buf, i) => {
+        const gainNode = offCtx.createGain();
+        gainNode.gain.value = tracks[i].volume;
+
+        const src = offCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(gainNode);
+        gainNode.connect(offCtx.destination);
+        src.start(0);
+      });
+
+      setProgress(70);
+      const mixed = await offCtx.startRendering();
+      setProgress(90);
+
+      const blob = bufferToWav(mixed);
+      const url  = URL.createObjectURL(blob);
+      audioOut.src = url;
+
+      dlBtn.classList.remove('hidden');
+      dlBtn.onclick = () => saveAs(blob, 'mixed_audio.wav');
+
+      setProgress(100);
+      setStatus('✓ Mix complete!', 'ok');
+    } catch(err) {
+      setStatus('Error: ' + err.message, 'err');
+      console.error(err);
+    } finally {
+      mixBtn.disabled = tracks.length < 2;
+    }
+  });
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function decodeFile(file, idx) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const ctx = new AudioContext();
+        ctx.decodeAudioData(e.target.result, buf => {
+          ctx.close();
+          resolve(buf);
+        }, reject);
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  function setStatus(msg, cls = '') {
+    statusEl.textContent = msg;
+    statusEl.className = cls;
+  }
+
+  function setProgress(pct) {
+    progressBar.style.width = pct + '%';
+  }
+
+  function bufferToWav(buffer) {
+    const numCh  = buffer.numberOfChannels;
+    const len    = buffer.length * numCh * 2;
+    const ab     = new ArrayBuffer(44 + len);
+    const view   = new DataView(ab);
+
+    writeStr(view, 0,  'RIFF');
+    view.setUint32(4,  36 + len, true);
+    writeStr(view, 8,  'WAVE');
+    writeStr(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1,  true);
+    view.setUint16(22, numCh, true);
+    view.setUint32(24, buffer.sampleRate, true);
+    view.setUint32(28, buffer.sampleRate * numCh * 2, true);
+    view.setUint16(32, numCh * 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(view, 36, 'data');
+    view.setUint32(40, len, true);
+
+    let offset = 44;
+    for (let i = 0; i < buffer.length; i++) {
+      for (let ch = 0; ch < numCh; ch++) {
+        const s = Math.max(-1, Math.min(1, buffer.getChannelData(ch)[i]));
+        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        offset += 2;
+      }
+    }
+    return new Blob([view], { type: 'audio/wav' });
+  }
+
+  function writeStr(view, offset, str) {
+    for (let i = 0; i < str.length; i++)
+      view.setUint8(offset + i, str.charCodeAt(i));
+  }
+</script>
 </body>
 </html>
